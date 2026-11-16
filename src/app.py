@@ -21,7 +21,8 @@ tabs = st.tabs([
     "3. Расчёт штрафов",
     "4. Бронирование",
     "5. Отчёт по популярности",
-    "6. Управление читателями"
+    "6. Управление читателями",
+    "7. Инвентаризация фонда"
 ])
 
 # Каталог книг с фильтрацией
@@ -30,7 +31,8 @@ with tabs[0]:
     with db.get_connection() as conn:
         authors = ["Все"] + [r["FullName"] for r in conn.execute("SELECT FullName FROM Author;").fetchall()]
         genres = ["Все"] + [r["Name"] for r in conn.execute("SELECT Name FROM Category;").fetchall()]
-        years = ["Все"] + [str(r["Year"]) for r in conn.execute("SELECT DISTINCT Year FROM Book ORDER BY Year DESC;").fetchall()]
+        years = ["Все"] + [str(r["Year"]) for r in
+                           conn.execute("SELECT DISTINCT Year FROM Book ORDER BY Year DESC;").fetchall()]
 
     col1, col2, col3 = st.columns(3)
     sel_author = col1.selectbox("Фильтр по автору", authors)
@@ -278,3 +280,32 @@ with tabs[5]:
                 st.rerun()
         else:
             st.info("В базе пока нет читателей.")
+
+# Инвентаризация фонда (Связь Book, Librarian и Inventory)
+with tabs[6]:
+    st.subheader("Инвентаризация библиотечного фонда")
+    st.markdown("Проверка наличия и фиксация состояния изданий ответственными сотрудниками.")
+
+    with db.get_connection() as conn:
+        inv_books = conn.execute("SELECT Id, Title FROM Book;").fetchall()
+        inv_librarians = conn.execute("SELECT Id, FullName, Shift FROM Librarian;").fetchall()
+
+    if inv_books and inv_librarians:
+        inv_book_map = {f"{b['Title']} (ID: {b['Id']})": b["Id"] for b in inv_books}
+        inv_lib_map = {f"{l['FullName']} (Смена: {l['Shift']}, ID: {l['Id']})": l["Id"] for l in inv_librarians}
+
+        selected_inv_book = st.selectbox("Выберите книгу для проверки", list(inv_book_map.keys()))
+        selected_inv_lib = st.selectbox("Ответственный библиотекарь", list(inv_lib_map.keys()))
+        inv_status = st.selectbox("Статус состояния фонда", ["В наличии", "Требует ремонта", "Утеряна"])
+
+        if st.button("Провести и зафиксировать инвентаризацию"):
+            book_id = inv_book_map[selected_inv_book]
+            librarian_id = inv_lib_map[selected_inv_lib]
+
+            ok, msg = facade.perform_inventory_check(librarian_id, book_id, inv_status)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+    else:
+        st.warning("В базе данных отсутствуют книги или зарегистрированные библиотекари.")

@@ -119,6 +119,10 @@ class RareBookInsuranceDecorator(LoanOperationDecorator):
 
 
 # 4. Facade
+from datetime import datetime, timedelta
+from db_manager import DatabaseManager
+
+
 class LibraryFacade:
     def __init__(self, db: DatabaseManager) -> None:
         self.db = db
@@ -162,6 +166,30 @@ class LibraryFacade:
             conn.commit()
             return True, "Книга возвращена в фонд библиотеки."
 
+    def perform_inventory_check(self, librarian_id: int, book_id: int, status: str) -> tuple[bool, str]:
+        with self.db.get_connection() as conn:
+            cur = conn.cursor()
+
+            cur.execute("SELECT Id, FullName FROM Librarian WHERE Id = ?;", (librarian_id,))
+            librarian = cur.fetchone()
+            if not librarian:
+                return False, "Ошибка: указанный библиотекарь не найден в системе."
+
+            cur.execute("SELECT Id, Title FROM Book WHERE Id = ?;", (book_id,))
+            book = cur.fetchone()
+            if not book:
+                return False, "Ошибка: книга не найдена в каталоге."
+
+            check_date = datetime.now().strftime("%Y-%m-%d")
+            cur.execute(
+                """
+                INSERT INTO Inventory (BookId, LibrarianId, CheckDate, Status) 
+                VALUES (?, ?, ?, ?);
+                """,
+                (book_id, librarian_id, check_date, status)
+            )
+            conn.commit()
+            return True, f"Инвентаризация книги «{book['Title']}» успешно проведена сотрудником {librarian['FullName']}."
 
 # 5. Strategy
 class FineCalculationStrategy(ABC):
